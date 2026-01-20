@@ -4,6 +4,7 @@ import random
 from pathlib import Path
 from typing import Dict
 
+import aiohttp
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
@@ -11,12 +12,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
-from aiohttp import web
 
 # ================= CONFIG =================
 BOT_TOKEN = "8554333625:AAEN_y6234ckN5ETJ4lNufYlGv__gAxYGLc"
 DATA_FILE = Path("movies.json")
-ALLOWED_THREAD_ID = 1388  # ID ветки/топика чата
+ALLOWED_THREAD_ID = 1388  # Ветка, где бот работает
 
 # ================= BOT ====================
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
@@ -105,8 +105,12 @@ def category_kb():
     ])
 
 # ================= THREAD CHECK =================
-def check_thread(message_or_query):
-    tid = getattr(message_or_query, "message_thread_id", None)
+def check_thread(obj):
+    """Проверка ветки: message или callback_query"""
+    tid = getattr(obj, "message_thread_id", None)
+    # callback_query хранит message внутри себя
+    if isinstance(obj, CallbackQuery) and tid is None:
+        tid = getattr(obj.message, "message_thread_id", None)
     return tid == ALLOWED_THREAD_ID
 
 # ================= HANDLERS =================
@@ -165,10 +169,9 @@ async def add_category(query: CallbackQuery, state: FSMContext):
 # ---------- WHEEL ----------
 @dp.callback_query(F.data.startswith("cat_"))
 async def wheel_spin(query: CallbackQuery, state: FSMContext):
-    # Игнорируем для добавления фильма
     current_state = await state.get_state()
     if current_state is not None:
-        return
+        return  # Игнорируем, если пользователь добавляет фильм
     if not check_thread(query):
         await query.answer("Эта ветка не разрешена", show_alert=True)
         return
@@ -232,8 +235,21 @@ async def clear_list(query: CallbackQuery, state: FSMContext):
     await query.answer()
     await show(query.message.chat.id, "🗑 Список очищен", main_kb())
 
+# ================= SELF-PING =================
+async def self_ping():
+    """Пингуем Google каждые 5 секунд, чтобы Render не засыпал"""
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                async with session.get("https://www.google.com", timeout=5) as resp:
+                    print(f"[PING] Google status: {resp.status}")
+            except Exception as e:
+                print(f"[PING ERROR] {e}")
+            await asyncio.sleep(5)
+
 # ================= RUN =================
 async def main():
+    asyncio.create_task(self_ping())  # запускаем пинг в фоне
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
