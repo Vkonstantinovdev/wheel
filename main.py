@@ -15,7 +15,7 @@ from aiogram.client.default import DefaultBotProperties
 # ================= CONFIG =================
 BOT_TOKEN = "8554333625:AAEN_y6234ckN5ETJ4lNufYlGv__gAxYGLc"
 DATA_FILE = Path("movies.json")
-ALLOWED_THREAD_ID = 1388  # ID ветки/топика чата, где бот работает
+ALLOWED_THREAD_ID = 1388  # ID ветки/топика чата
 
 # ================= BOT ====================
 bot = Bot(
@@ -30,11 +30,12 @@ class AddMovie(StatesGroup):
     title = State()
     category = State()
 
-# ================= SINGLE MESSAGE PER CHAT =================
+# ================= SINGLE MESSAGE =================
 LAST_MESSAGE: Dict[int, int] = {}
 WHEEL_LOCK: Dict[int, bool] = {}
 
 # ================= STORAGE =================
+
 def load_data():
     if DATA_FILE.exists():
         return json.loads(DATA_FILE.read_text(encoding="utf-8"))
@@ -48,11 +49,7 @@ def save_data(data):
 def add_movie(chat_id, title, category, author):
     data = load_data()
     cid = str(chat_id)
-    data.setdefault(cid, []).append({
-        "title": title,
-        "category": category,
-        "author": author
-    })
+    data.setdefault(cid, []).append({"title": title, "category": category, "author": author})
     save_data(data)
 
 
@@ -89,7 +86,6 @@ async def show(chat_id: int, text: str, kb: InlineKeyboardMarkup):
             return
         except:
             pass
-
     msg = await bot.send_message(chat_id, text, reply_markup=kb, message_thread_id=ALLOWED_THREAD_ID)
     LAST_MESSAGE[chat_id] = msg.message_id
 
@@ -131,11 +127,7 @@ async def start(message: Message):
         await message.reply("Бот работает только в этой ветке.")
         return
     await kill_message(message)
-    await show(
-        message.chat.id,
-        "🎬 <b>Movie Roulette</b>\nОдно сообщение — много людей",
-        main_kb()
-    )
+    await show(message.chat.id, "🎬 <b>Movie Roulette</b>\nОдно сообщение — много людей", main_kb())
 
 
 @dp.callback_query(F.data == "menu")
@@ -166,11 +158,7 @@ async def add_title(message: Message, state: FSMContext):
         return
     await state.update_data(title=title)
     await state.set_state(AddMovie.category)
-    await show(
-        message.chat.id,
-        f"🎬 <b>{title}</b>\nВыбери категорию",
-        category_kb()
-    )
+    await show(message.chat.id, f"🎬 <b>{title}</b>\nВыбери категорию", category_kb())
 
 
 @dp.callback_query(AddMovie.category, F.data.startswith("cat_"))
@@ -191,7 +179,6 @@ async def add_category(query: CallbackQuery, state: FSMContext):
 # ---------- WHEEL ----------
 @dp.callback_query(F.data.startswith("cat_"))
 async def wheel_spin(query: CallbackQuery, state: FSMContext):
-    # Если FSM активен — это добавление фильма
     current_state = await state.get_state()
     if current_state is not None:
         return
