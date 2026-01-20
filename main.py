@@ -15,6 +15,7 @@ from aiogram.client.default import DefaultBotProperties
 # ================= CONFIG =================
 BOT_TOKEN = "8554333625:AAEN_y6234ckN5ETJ4lNufYlGv__gAxYGLc"
 DATA_FILE = Path("movies.json")
+ALLOWED_THREAD_ID = 12345678  # ID ветки/топика чата, где бот работает
 
 # ================= BOT ====================
 bot = Bot(
@@ -25,8 +26,6 @@ bot = Bot(
 dp = Dispatcher(storage=MemoryStorage())
 
 # ================= FSM ====================
-# FSMContext в aiogram уже ИЗОЛИРОВАН по (chat_id + user_id)
-# это значит: 10 человек могут одновременно добавлять фильмы
 class AddMovie(StatesGroup):
     title = State()
     category = State()
@@ -90,7 +89,7 @@ async def show(chat_id: int, text: str, kb: InlineKeyboardMarkup):
         except:
             pass
 
-    msg = await bot.send_message(chat_id, text, reply_markup=kb)
+    msg = await bot.send_message(chat_id, text, reply_markup=kb, message_thread_id=ALLOWED_THREAD_ID)
     LAST_MESSAGE[chat_id] = msg.message_id
 
 
@@ -119,9 +118,18 @@ def category_kb():
         [InlineKeyboardButton(text="⬅️ В меню", callback_data="menu")],
     ])
 
+# ================= THREAD CHECK =================
+def check_thread(message_or_query):
+    tid = getattr(message_or_query, "message_thread_id", None)
+    if tid != ALLOWED_THREAD_ID:
+        return False
+    return True
+
 # ================= HANDLERS =================
 @dp.message(Command("start"))
 async def start(message: Message):
+    if not check_thread(message):
+        return
     await kill_message(message)
     await show(
         message.chat.id,
@@ -132,6 +140,9 @@ async def start(message: Message):
 
 @dp.callback_query(F.data == "menu")
 async def back_menu(query: CallbackQuery):
+    if not check_thread(query):
+        await query.answer("Эта ветка не разрешена", show_alert=True)
+        return
     await query.answer()
     await show(query.message.chat.id, "🎬 Главное меню", main_kb())
 
@@ -139,12 +150,17 @@ async def back_menu(query: CallbackQuery):
 # ---------- ADD MOVIE (MULTIUSER SAFE) ----------
 @dp.callback_query(F.data == "add")
 async def add_start(query: CallbackQuery, state: FSMContext):
+    if not check_thread(query):
+        await query.answer("Эта ветка не разрешена", show_alert=True)
+        return
     await query.answer("Пиши название фильма")
     await state.set_state(AddMovie.title)
 
 
 @dp.message(AddMovie.title)
 async def add_title(message: Message, state: FSMContext):
+    if not check_thread(message):
+        return
     title = message.text.strip()
     await kill_message(message)
 
@@ -163,6 +179,10 @@ async def add_title(message: Message, state: FSMContext):
 
 @dp.callback_query(AddMovie.category, F.data.startswith("cat_"))
 async def add_category(query: CallbackQuery, state: FSMContext):
+    if not check_thread(query):
+        await query.answer("Эта ветка не разрешена", show_alert=True)
+        return
+
     data = await state.get_data()
     category = query.data.replace("cat_", "")
 
@@ -185,6 +205,9 @@ async def add_category(query: CallbackQuery, state: FSMContext):
 # ---------- LIST ----------
 @dp.callback_query(F.data == "list")
 async def list_movies(query: CallbackQuery):
+    if not check_thread(query):
+        await query.answer("Эта ветка не разрешена", show_alert=True)
+        return
     await query.answer()
     movies = get_movies(query.message.chat.id)
 
@@ -194,7 +217,8 @@ async def list_movies(query: CallbackQuery):
 
     text = "🎥 <b>Список фильмов</b>\n\n"
     for i, m in enumerate(movies, 1):
-        text += f"{i}. {m['title']} — <i>{m['author']}</i>\n"
+        author = m.get('author', 'неизвестно')
+        text += f"{i}. {m['title']} — <i>{author}</i>\n"
 
     await show(query.message.chat.id, text, main_kb())
 
@@ -202,6 +226,10 @@ async def list_movies(query: CallbackQuery):
 # ---------- WHEEL (LOCKED) ----------
 @dp.callback_query(F.data == "wheel")
 async def wheel_start(query: CallbackQuery):
+    if not check_thread(query):
+        await query.answer("Эта ветка не разрешена", show_alert=True)
+        return
+
     if WHEEL_LOCK.get(query.message.chat.id):
         await query.answer("Рулетка уже крутится", show_alert=True)
         return
@@ -212,6 +240,10 @@ async def wheel_start(query: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("cat_"))
 async def wheel_spin(query: CallbackQuery):
+    if not check_thread(query):
+        await query.answer("Эта ветка не разрешена", show_alert=True)
+        return
+
     chat_id = query.message.chat.id
 
     if WHEEL_LOCK.get(chat_id):
@@ -249,9 +281,10 @@ async def wheel_spin(query: CallbackQuery):
 
     WHEEL_LOCK[chat_id] = False
 
+    author = winner.get("author", "неизвестно")
     await show(
         chat_id,
-        f"🏆 <b>Победитель</b>\n{winner['title']}\n\nДобавил: <i>{winner['author']}</i>",
+        f"🏆 <b>Победитель</b>\n{winner['title']}\n\nДобавил: <i>{author}</i>",
         main_kb()
     )
 
@@ -259,6 +292,10 @@ async def wheel_spin(query: CallbackQuery):
 # ---------- CLEAR ----------
 @dp.callback_query(F.data == "clear")
 async def clear_list(query: CallbackQuery):
+    if not check_thread(query):
+        await query.answer("Эта ветка не разрешена", show_alert=True)
+        return
+
     clear_movies(query.message.chat.id)
     await query.answer()
     await show(query.message.chat.id, "🗑 Список очищен", main_kb())
