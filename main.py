@@ -15,7 +15,7 @@ from aiogram.client.default import DefaultBotProperties
 # ================= CONFIG =================
 BOT_TOKEN = "8554333625:AAEN_y6234ckN5ETJ4lNufYlGv__gAxYGLc"
 DATA_FILE = Path("movies.json")
-ALLOWED_THREAD_ID = 12345678  # ID ветки/топика чата, где бот работает
+ALLOWED_THREAD_ID = 6  # ID ветки/топика чата, где бот работает
 
 # ================= BOT ====================
 bot = Bot(
@@ -307,3 +307,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
