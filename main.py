@@ -1,6 +1,6 @@
 import asyncio
-import random
 import json
+import random
 from pathlib import Path
 from typing import Dict
 
@@ -11,6 +11,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
+from aiohttp import web
 
 # ================= CONFIG =================
 BOT_TOKEN = "8554333625:AAEN_y6234ckN5ETJ4lNufYlGv__gAxYGLc"
@@ -18,11 +19,7 @@ DATA_FILE = Path("movies.json")
 ALLOWED_THREAD_ID = 1388  # ID ветки/топика чата
 
 # ================= BOT ====================
-bot = Bot(
-    token=BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode="HTML")
-)
-
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher(storage=MemoryStorage())
 
 # ================= FSM ====================
@@ -35,16 +32,13 @@ LAST_MESSAGE: Dict[int, int] = {}
 WHEEL_LOCK: Dict[int, bool] = {}
 
 # ================= STORAGE =================
-
 def load_data():
     if DATA_FILE.exists():
         return json.loads(DATA_FILE.read_text(encoding="utf-8"))
     return {}
 
-
 def save_data(data):
     DATA_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8")
-
 
 def add_movie(chat_id, title, category, author):
     data = load_data()
@@ -52,20 +46,17 @@ def add_movie(chat_id, title, category, author):
     data.setdefault(cid, []).append({"title": title, "category": category, "author": author})
     save_data(data)
 
-
 def get_movies(chat_id, category=None):
     movies = load_data().get(str(chat_id), [])
     if category:
-        movies = [m for m in movies if m["category"] == category]
+        movies = [m for m in movies if m.get("category") == category]
     return movies
-
 
 def remove_movie(chat_id, title):
     data = load_data()
     cid = str(chat_id)
-    data[cid] = [m for m in data.get(cid, []) if m["title"] != title]
+    data[cid] = [m for m in data.get(cid, []) if m.get("title") != title]
     save_data(data)
-
 
 def clear_movies(chat_id):
     data = load_data()
@@ -74,8 +65,8 @@ def clear_movies(chat_id):
 
 # ================= UI HELPERS =================
 async def show(chat_id: int, text: str, kb: InlineKeyboardMarkup):
-    if chat_id in LAST_MESSAGE:
-        try:
+    try:
+        if chat_id in LAST_MESSAGE:
             await bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=LAST_MESSAGE[chat_id],
@@ -84,11 +75,10 @@ async def show(chat_id: int, text: str, kb: InlineKeyboardMarkup):
                 message_thread_id=ALLOWED_THREAD_ID
             )
             return
-        except:
-            pass
+    except:
+        pass
     msg = await bot.send_message(chat_id, text, reply_markup=kb, message_thread_id=ALLOWED_THREAD_ID)
     LAST_MESSAGE[chat_id] = msg.message_id
-
 
 async def kill_message(message: Message):
     try:
@@ -104,7 +94,6 @@ def main_kb():
         [InlineKeyboardButton(text="📋 Список", callback_data="list")],
         [InlineKeyboardButton(text="🗑 Очистить", callback_data="clear")],
     ])
-
 
 def category_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -129,7 +118,6 @@ async def start(message: Message):
     await kill_message(message)
     await show(message.chat.id, "🎬 <b>Movie Roulette</b>\nОдно сообщение — много людей", main_kb())
 
-
 @dp.callback_query(F.data == "menu")
 async def back_menu(query: CallbackQuery):
     if not check_thread(query):
@@ -147,7 +135,6 @@ async def add_start(query: CallbackQuery, state: FSMContext):
     await query.answer("Пиши название фильма")
     await state.set_state(AddMovie.title)
 
-
 @dp.message(AddMovie.title)
 async def add_title(message: Message, state: FSMContext):
     if not check_thread(message):
@@ -159,7 +146,6 @@ async def add_title(message: Message, state: FSMContext):
     await state.update_data(title=title)
     await state.set_state(AddMovie.category)
     await show(message.chat.id, f"🎬 <b>{title}</b>\nВыбери категорию", category_kb())
-
 
 @dp.callback_query(AddMovie.category, F.data.startswith("cat_"))
 async def add_category(query: CallbackQuery, state: FSMContext):
@@ -179,18 +165,17 @@ async def add_category(query: CallbackQuery, state: FSMContext):
 # ---------- WHEEL ----------
 @dp.callback_query(F.data.startswith("cat_"))
 async def wheel_spin(query: CallbackQuery, state: FSMContext):
+    # Игнорируем для добавления фильма
     current_state = await state.get_state()
     if current_state is not None:
         return
     if not check_thread(query):
         await query.answer("Эта ветка не разрешена", show_alert=True)
         return
-
     chat_id = query.message.chat.id
     if WHEEL_LOCK.get(chat_id):
         await query.answer("Подожди, идёт выбор", show_alert=True)
         return
-
     WHEEL_LOCK[chat_id] = True
     await query.answer()
     category = query.data.replace("cat_", "")
@@ -200,7 +185,6 @@ async def wheel_spin(query: CallbackQuery, state: FSMContext):
         WHEEL_LOCK[chat_id] = False
         await show(chat_id, "⚠️ Нет фильмов в этой категории", main_kb())
         return
-
     pool = movies.copy()
     eliminated = []
     while len(pool) > 1:
@@ -209,7 +193,6 @@ async def wheel_spin(query: CallbackQuery, state: FSMContext):
         eliminated.append(loser["title"])
         await show(chat_id, "🎡 Рулетка\n\n" + "\n".join(f"❌ {t}" for t in eliminated), InlineKeyboardMarkup(inline_keyboard=[]))
         await asyncio.sleep(0.5)
-
     winner = pool[0]
     remove_movie(chat_id, winner["title"])
     WHEEL_LOCK[chat_id] = False
@@ -232,7 +215,7 @@ async def list_movies(query: CallbackQuery, state: FSMContext):
         return
     text = "🎥 <b>Список фильмов</b>\n\n"
     for i, m in enumerate(movies, 1):
-        author = m.get('author', 'неизвестно')
+        author = m.get("author", "неизвестно")
         text += f"{i}. {m['title']} — <i>{author}</i>\n"
     await show(query.message.chat.id, text, main_kb())
 
@@ -252,7 +235,6 @@ async def clear_list(query: CallbackQuery, state: FSMContext):
 # ================= RUN =================
 async def main():
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
