@@ -7,7 +7,8 @@ from typing import Dict
 import aiohttp
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
-from aiogram.filters import Command, Text
+from aiogram.filters import Command
+from aiogram.filters.text import TextFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -118,7 +119,7 @@ async def start(message: Message):
     await show(message.chat.id, "🎬 <b>Movie Roulette</b>\nВыберите действие:", main_kb())
 
 # ---------- ADD MOVIE ----------
-@dp.message(Text(equals="➕ Добавить фильм"))
+@dp.message(TextFilter(equals="➕ Добавить фильм"))
 async def add_start(message: Message, state: FSMContext):
     tid = getattr(message, "message_thread_id", None)
     if tid != ALLOWED_THREAD_ID:
@@ -155,7 +156,7 @@ async def add_category(message: Message, state: FSMContext):
     await show(message.chat.id, f"✅ <b>{data['title']}</b> добавил <i>{author}</i>", main_kb())
 
 # ---------- LIST ----------
-@dp.message(Text(equals="📋 Список"))
+@dp.message(TextFilter(equals="📋 Список"))
 async def list_movies(message: Message):
     tid = getattr(message, "message_thread_id", None)
     if tid != ALLOWED_THREAD_ID:
@@ -172,7 +173,7 @@ async def list_movies(message: Message):
     await show(message.chat.id, text, main_kb())
 
 # ---------- CLEAR ----------
-@dp.message(Text(equals="🗑 Очистить"))
+@dp.message(TextFilter(equals="🗑 Очистить"))
 async def clear_list(message: Message):
     tid = getattr(message, "message_thread_id", None)
     if tid != ALLOWED_THREAD_ID:
@@ -182,7 +183,7 @@ async def clear_list(message: Message):
     await show(message.chat.id, "🗑 Список очищен", main_kb())
 
 # ---------- WHEEL ----------
-@dp.message(Text(equals="🎡 Рулетка"))
+@dp.message(TextFilter(equals="🎡 Рулетка"))
 async def wheel_start(message: Message):
     tid = getattr(message, "message_thread_id", None)
     if tid != ALLOWED_THREAD_ID:
