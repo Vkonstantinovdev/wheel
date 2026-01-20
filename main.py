@@ -122,14 +122,12 @@ def category_kb():
 # ================= THREAD CHECK =================
 def check_thread(message_or_query):
     tid = getattr(message_or_query, "message_thread_id", None)
-    if tid != ALLOWED_THREAD_ID:
-        return False
-    return True
+    return tid == ALLOWED_THREAD_ID
 
 # ================= HANDLERS =================
 @dp.message(Command("start"))
 async def start(message: Message):
-    if getattr(message, "message_thread_id", None) != ALLOWED_THREAD_ID:
+    if not check_thread(message):
         await message.reply("Бот работает только в этой ветке.")
         return
     await kill_message(message)
@@ -142,24 +140,25 @@ async def start(message: Message):
 
 @dp.callback_query(F.data == "menu")
 async def back_menu(query: CallbackQuery):
-    if getattr(query.message, "message_thread_id", None) != ALLOWED_THREAD_ID:
+    if not check_thread(query):
         await query.answer("Эта ветка не разрешена", show_alert=True)
         return
     await query.answer()
     await show(query.message.chat.id, "🎬 Главное меню", main_kb())
 
-# ---------- ADD MOVIE (MULTIUSER SAFE) ----------
+# ---------- ADD MOVIE ----------
 @dp.callback_query(F.data == "add")
 async def add_start(query: CallbackQuery, state: FSMContext):
-    if getattr(query.message, "message_thread_id", None) != ALLOWED_THREAD_ID:
+    if not check_thread(query):
         await query.answer("Эта ветка не разрешена", show_alert=True)
         return
     await query.answer("Пиши название фильма")
     await state.set_state(AddMovie.title)
 
+
 @dp.message(AddMovie.title)
 async def add_title(message: Message, state: FSMContext):
-    if getattr(message, "message_thread_id", None) != ALLOWED_THREAD_ID:
+    if not check_thread(message):
         return
     title = message.text.strip()
     await kill_message(message)
@@ -173,9 +172,10 @@ async def add_title(message: Message, state: FSMContext):
         category_kb()
     )
 
+
 @dp.callback_query(AddMovie.category, F.data.startswith("cat_"))
 async def add_category(query: CallbackQuery, state: FSMContext):
-    if getattr(query.message, "message_thread_id", None) != ALLOWED_THREAD_ID:
+    if not check_thread(query):
         await query.answer("Эта ветка не разрешена", show_alert=True)
         return
     data = await state.get_data()
@@ -186,15 +186,81 @@ async def add_category(query: CallbackQuery, state: FSMContext):
     add_movie(query.message.chat.id, data["title"], category, author)
     await state.clear()
     await query.answer("Фильм добавлен")
-    await show(
-        query.message.chat.id,
-        f"✅ <b>{data['title']}</b> добавил <i>{author}</i>",
-        main_kb()
-    )
+    await show(query.message.chat.id, f"✅ <b>{data['title']}</b> добавил <i>{author}</i>", main_kb())
 
-# ---------- OTHER HANDLERS (LIST, WHEEL, CLEAR) ----------
-# Везде проверка message_thread_id через getattr(query.message, "message_thread_id", None) == ALLOWED_THREAD_ID
-# (аналогично как выше)
+# ---------- WHEEL ----------
+@dp.callback_query(F.data.startswith("cat_"))
+async def wheel_spin(query: CallbackQuery, state: FSMContext):
+    # Если FSM активен — это добавление фильма
+    current_state = await state.get_state()
+    if current_state is not None:
+        return
+    if not check_thread(query):
+        await query.answer("Эта ветка не разрешена", show_alert=True)
+        return
+
+    chat_id = query.message.chat.id
+    if WHEEL_LOCK.get(chat_id):
+        await query.answer("Подожди, идёт выбор", show_alert=True)
+        return
+
+    WHEEL_LOCK[chat_id] = True
+    await query.answer()
+    category = query.data.replace("cat_", "")
+    cat = None if category == "любое" else category
+    movies = get_movies(chat_id, cat)
+    if not movies:
+        WHEEL_LOCK[chat_id] = False
+        await show(chat_id, "⚠️ Нет фильмов в этой категории", main_kb())
+        return
+
+    pool = movies.copy()
+    eliminated = []
+    while len(pool) > 1:
+        loser = random.choice(pool)
+        pool.remove(loser)
+        eliminated.append(loser["title"])
+        await show(chat_id, "🎡 Рулетка\n\n" + "\n".join(f"❌ {t}" for t in eliminated), InlineKeyboardMarkup(inline_keyboard=[]))
+        await asyncio.sleep(0.5)
+
+    winner = pool[0]
+    remove_movie(chat_id, winner["title"])
+    WHEEL_LOCK[chat_id] = False
+    author = winner.get("author", "неизвестно")
+    await show(chat_id, f"🏆 <b>Победитель</b>\n{winner['title']}\n\nДобавил: <i>{author}</i>", main_kb())
+
+# ---------- LIST ----------
+@dp.callback_query(F.data == "list")
+async def list_movies(query: CallbackQuery, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state is not None:
+        return
+    if not check_thread(query):
+        await query.answer("Эта ветка не разрешена", show_alert=True)
+        return
+    await query.answer()
+    movies = get_movies(query.message.chat.id)
+    if not movies:
+        await show(query.message.chat.id, "📭 Список пуст", main_kb())
+        return
+    text = "🎥 <b>Список фильмов</b>\n\n"
+    for i, m in enumerate(movies, 1):
+        author = m.get('author', 'неизвестно')
+        text += f"{i}. {m['title']} — <i>{author}</i>\n"
+    await show(query.message.chat.id, text, main_kb())
+
+# ---------- CLEAR ----------
+@dp.callback_query(F.data == "clear")
+async def clear_list(query: CallbackQuery, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state is not None:
+        return
+    if not check_thread(query):
+        await query.answer("Эта ветка не разрешена", show_alert=True)
+        return
+    clear_movies(query.message.chat.id)
+    await query.answer()
+    await show(query.message.chat.id, "🗑 Список очищен", main_kb())
 
 # ================= RUN =================
 async def main():
