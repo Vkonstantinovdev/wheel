@@ -85,7 +85,7 @@ def category_kb():
     )
 
 # ================= UI HELPERS =================
-async def show(chat_id: int, text: str, kb=None):
+async def show(chat_id: int, text: str, kb=None, message_thread_id=None):
     try:
         if chat_id in LAST_MESSAGE:
             await bot.edit_message_text(
@@ -93,13 +93,14 @@ async def show(chat_id: int, text: str, kb=None):
                 message_id=LAST_MESSAGE[chat_id],
                 text=text,
                 reply_markup=kb,
-                message_thread_id=ALLOWED_THREAD_ID
+                message_thread_id=message_thread_id
             )
             return
     except:
         pass
-    msg = await bot.send_message(chat_id, text, reply_markup=kb, message_thread_id=ALLOWED_THREAD_ID)
+    msg = await bot.send_message(chat_id, text, reply_markup=kb, message_thread_id=message_thread_id)
     LAST_MESSAGE[chat_id] = msg.message_id
+
 
 async def kill_message(message: Message):
     try:
@@ -114,8 +115,13 @@ async def start(message: Message):
     if tid != ALLOWED_THREAD_ID:
         await message.reply("Бот работает только в нужной ветке.")
         return
-    await kill_message(message)
-    await show(message.chat.id, "🎬 <b>Movie Roulette</b>\nВыберите действие:", main_kb())
+    # Не удаляем стартовое сообщение
+    await show(
+        message.chat.id,
+        "🎬 <b>Movie Roulette</b>\nВыберите действие:",
+        main_kb(),
+        message_thread_id=ALLOWED_THREAD_ID
+    )
 
 # ---------- ADD MOVIE ----------
 @dp.message(lambda m: m.text == "➕ Добавить фильм")
@@ -241,3 +247,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
