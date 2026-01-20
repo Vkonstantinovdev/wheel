@@ -106,18 +106,26 @@ def category_kb():
 
 # ================= THREAD CHECK =================
 def check_thread(obj):
-    """Проверка ветки: message или callback_query"""
-    tid = getattr(obj, "message_thread_id", None)
-    # callback_query хранит message внутри себя
-    if isinstance(obj, CallbackQuery) and tid is None:
+    """
+    Проверка ветки:
+    - CallbackQuery: берем message.message_thread_id
+    - Message: берем message_thread_id, но команды разрешены без thread_id
+    """
+    if isinstance(obj, CallbackQuery):
         tid = getattr(obj.message, "message_thread_id", None)
-    return tid == ALLOWED_THREAD_ID
+        return tid == ALLOWED_THREAD_ID
+    if isinstance(obj, Message):
+        tid = getattr(obj, "message_thread_id", None)
+        if tid is None:
+            return True  # разрешаем команды /start и текстовые сообщения
+        return tid == ALLOWED_THREAD_ID
+    return False
 
 # ================= HANDLERS =================
 @dp.message(Command("start"))
 async def start(message: Message):
     if not check_thread(message):
-        await message.reply("Бот работает только в этой ветке.")
+        await message.reply("Бот работает только в нужной ветке.")
         return
     await kill_message(message)
     await show(message.chat.id, "🎬 <b>Movie Roulette</b>\nОдно сообщение — много людей", main_kb())
