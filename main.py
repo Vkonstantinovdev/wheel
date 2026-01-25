@@ -42,7 +42,8 @@ logger = logging.getLogger("movie_roulette")
 
 # ================= PATHS =================
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "movies.db"
+DB_PATH = Path("/app/data/movies.db")
+
 
 # ================= CONFIG =================
 BOT_TOKEN = "8554333625:AAEN_y6234ckN5ETJ4lNufYlGv__gAxYGLc"
